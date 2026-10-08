@@ -12,21 +12,73 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 import os
+import secrets
+
 import dj_database_url
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+IS_VERCEL = os.environ.get('VERCEL') == '1'
+
+
+def _environment_list(name, default=''):
+    return [
+        value.strip()
+        for value in os.environ.get(name, default).split(',')
+        if value.strip()
+    ]
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-c8aetlj(=vp90n@#yoc^&d(_6ivp(d!bv-4-f!r$lawptjzrwu'
+DEBUG = os.environ.get(
+    'DEBUG',
+    'False' if IS_VERCEL else 'True',
+).strip().lower() in {'1', 'true', 'yes', 'on'}
+if IS_VERCEL and DEBUG:
+    from django.core.exceptions import ImproperlyConfigured
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+    raise ImproperlyConfigured('DEBUG must be false on Vercel.')
 
-ALLOWED_HOSTS = ['.vercel.app']
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if IS_VERCEL or not DEBUG:
+        from django.core.exceptions import ImproperlyConfigured
+
+        raise ImproperlyConfigured('SECRET_KEY must be set when DEBUG is disabled.')
+    SECRET_KEY = secrets.token_urlsafe(50)
+
+ALLOWED_HOSTS = _environment_list(
+    'ALLOWED_HOSTS',
+    'mybookshow-kohl.vercel.app',
+)
+if not IS_VERCEL:
+    ALLOWED_HOSTS.extend(['localhost', '127.0.0.1', '[::1]'])
+
+for vercel_host_variable in ('VERCEL_URL', 'VERCEL_PROJECT_PRODUCTION_URL'):
+    vercel_host = os.environ.get(vercel_host_variable, '').strip()
+    if vercel_host and all(character.isalnum() or character in '.-' for character in vercel_host):
+        if vercel_host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(vercel_host)
+
+CSRF_TRUSTED_ORIGINS = _environment_list(
+    'CSRF_TRUSTED_ORIGINS',
+    'https://mybookshow-kohl.vercel.app',
+)
+for vercel_host_variable in ('VERCEL_URL', 'VERCEL_PROJECT_PRODUCTION_URL'):
+    vercel_host = os.environ.get(vercel_host_variable, '').strip()
+    if vercel_host and all(character.isalnum() or character in '.-' for character in vercel_host):
+        vercel_origin = f'https://{vercel_host}'
+        if vercel_origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(vercel_origin)
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = not DEBUG
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 
 # Application definition
@@ -44,6 +96,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -81,18 +134,17 @@ WSGI_APPLICATION = 'bookmyseat.wsgi.application'
 
 
 # Database
-# https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL:
-    DATABASES = {
-        "default": dj_database_url.parse(DATABASE_URL, conn_max_age=0),
-    }
-    DATABASES["default"].setdefault("OPTIONS", {})["sslmode"] = "require"
-elif os.environ.get("VERCEL") == "1":
+    default_database = dj_database_url.parse(DATABASE_URL, conn_max_age=0)
+    if default_database['ENGINE'] == 'django.db.backends.postgresql':
+        default_database.setdefault('OPTIONS', {})['sslmode'] = 'require'
+    DATABASES = {'default': default_database}
+elif IS_VERCEL or not DEBUG:
     from django.core.exceptions import ImproperlyConfigured
 
-    raise ImproperlyConfigured("DATABASE_URL must be set in the Vercel environment.")
+    raise ImproperlyConfigured("DATABASE_URL must be set when DEBUG is disabled.")
 else:
     DATABASES = {
         "default": {
@@ -135,7 +187,17 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
