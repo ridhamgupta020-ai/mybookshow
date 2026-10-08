@@ -36,10 +36,7 @@ def environment_list(name, default=""):
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 if not SECRET_KEY:
-    raise RuntimeError(
-        "SECRET_KEY environment variable is not set. "
-        "Add SECRET_KEY to your Vercel Environment Variables."
-    )
+    raise RuntimeError("SECRET_KEY must be set in environment variables.")
 
 
 DEBUG = os.environ.get(
