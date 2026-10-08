@@ -140,6 +140,8 @@ if DATABASE_URL:
     default_database = dj_database_url.parse(DATABASE_URL, conn_max_age=0)
     if default_database.get('ENGINE') == 'django.db.backends.postgresql':
         default_database.setdefault('OPTIONS', {})['sslmode'] = 'require'
+        if default_database.get('PORT') == 6543:
+            default_database['DISABLE_SERVER_SIDE_CURSORS'] = True
     DATABASES = {'default': default_database}
 elif IS_VERCEL or not DEBUG:
     from django.core.exceptions import ImproperlyConfigured
