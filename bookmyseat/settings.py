@@ -138,7 +138,7 @@ WSGI_APPLICATION = 'bookmyseat.wsgi.application'
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL:
     default_database = dj_database_url.parse(DATABASE_URL, conn_max_age=0)
-    if default_database['ENGINE'] == 'django.db.backends.postgresql':
+    if default_database.get('ENGINE') == 'django.db.backends.postgresql':
         default_database.setdefault('OPTIONS', {})['sslmode'] = 'require'
     DATABASES = {'default': default_database}
 elif IS_VERCEL or not DEBUG:
